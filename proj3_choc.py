@@ -1,6 +1,10 @@
 import sqlite3
 import csv
 import json
+import sys
+import codecs
+import fnmatch
+sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
 
 # proj3_choc.py
 # You can change anything in this file you want as long as you pass the tests
@@ -11,6 +15,11 @@ import json
 DBNAME = 'choc.db'
 BARSCSV = 'flavors_of_cacao_cleaned.csv'
 COUNTRIESJSON = 'countries.json'
+
+try:
+    INPUT = sys.argv[1]
+except:
+    INPUT = None
 
 def create_database():
     conn = sqlite3.connect(DBNAME)
@@ -38,7 +47,7 @@ def create_database():
             'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
             'Alpha2' TEXT,
             'Alpha3' TEXT,
-            'EnglishName' TEXT,
+            'EnglishName' TEXT UNIQUE,
             'Region' TEXT,
             'Subregion' TEXT,
             'Population' INTEGER,
@@ -47,21 +56,28 @@ def create_database():
     '''
     cur.execute(statement)
     
-    # Commit your changes, and close that shit
+    # Commit changes and close
     conn.commit()
     conn.close()
     
 def load_data():
-    with open(COUNTRIESJSON, 'r') as f:
+    conn = sqlite3.connect(DBNAME)
+    cur = conn.cursor()
+    
+    with open(COUNTRIESJSON, encoding = 'utf-8') as f:
         content = f.read()
         countries = json.loads(content)
         
         for country in countries:
             inputs = (country['alpha2Code'], country['alpha3Code'], country['name'], country['region'], country['subregion'], country['population'], country['area'])
             statement = '''
-                INSERT INTO Countries (Alpha2, Alpha3, EnglishName, Region, Subregion, Population, Area) VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO Countries (Alpha2, Alpha3, EnglishName, Region, Subregion, Population, Area) VALUES (?, ?, ?, ?, ?, ?, ?)
             '''
             cur.execute(statement, inputs)
+            
+        f.close()
+            
+    conn.commit()
     
     with open(BARSCSV) as f:
         csv_reader = csv.reader(f)
@@ -69,15 +85,119 @@ def load_data():
         for row in csv_reader:
             if line == 0:
                 pass
-            elif line == 1:
+                line += 1
+            else:
+                for item in row:
+                    if item == '':
+                        item = 'NULL'
+                        
+                inputs = (row[5],)
                 statement = '''
-                    INSERT INTO Bars (Company, SpecificBeanBarName, REF, ReviewDate, CocoaPercent, CompanyLocationId, Rating, BeanType, BroadBeanOriginId) 
+                    SELECT Id FROM Countries WHERE EnglishName = ?
                 '''
+                cur.execute(statement, inputs)
+                try:
+                    location_id = cur.fetchone()[0]
+                except:
+                    location_id = 'NULL'
+                
+                inputs = (row[8],)
+                statement = '''
+                    SELECT Id FROM Countries WHERE EnglishName = ?
+                '''
+                cur.execute(statement, inputs)
+                try:
+                    origin_id = cur.fetchone()[0]
+                except:
+                    origin_id = 'NULL'
+                
+                inputs = (row[0], row[1], row[2], row[3], row[4].split('%')[0], location_id, row[6], row[7], origin_id,   row[0], row[1], row[2], row[3], row[4].split('%')[0], location_id, row[6], row[7], origin_id)
+                statement = '''
+                    INSERT INTO Bars (Company, SpecificBeanBarName, REF, ReviewDate, CocoaPercent, CompanyLocationId, Rating, BeanType, BroadBeanOriginId)
+
+                    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS(SELECT 1 FROM Bars WHERE Company = ? AND SpecificBeanBarName = ? AND REF = ? AND ReviewDate = ? AND CocoaPercent = ? AND CompanyLocationId = ? AND Rating = ? AND BeanType = ? AND BroadBeanOriginId = ?)
+                '''
+                cur.execute(statement, inputs)
+                line += 1
+                
+        f.close()
+                
+    conn.commit()
+    conn.close()
                 
     
 # Part 2: Implement logic to process user commands
 def process_command(command):
-    return []
+    conn = sqlite3.connect(DBNAME)
+    cur = conn.cursor()
+    
+    command_split = command.split(' ')
+    
+    if command_split[0].lower() == 'bars':        
+        company_country = fnmatch.filter(command_split, 'sellcountry*')
+        if len(company_country) != 0:
+            company_country = company_country[0].split('=')[1]
+        else:
+            company_country = '%'
+        
+        bean_country = fnmatch.filter(command_split, 'sourcecountry*')
+        if len(bean_country) != 0:
+            bean_country = bean_country[0].split('=')[1]
+        else:
+            bean_country = '%'
+        
+        company_region = fnmatch.filter(command_split, 'sellregion*')
+        if len(company_region) != 0:
+            company_region = company_region[0].split('=')[1]
+        else:
+            company_region = '%'
+        
+        bean_region = fnmatch.filter(command_split, 'sourceregion*')
+        if len(bean_region) != 0:
+            bean_region = bean_region[0].split('=')[1]
+        else:
+            bean_region = '%'
+            
+        if 'cocoa' in command_split:
+            column = 'CocoaPercent'
+        else:
+            column = 'Rating'
+        
+        delimit_top = fnmatch.filter(command_split, 'top*')
+        order = 'desc'
+        if len(delimit_top) != 0:
+            limit = int(delimit_top[0].split('=')[1])
+        else:
+            limit = 10
+            
+        delimit_bottom = fnmatch.filter(command_split, 'bottom*')
+        if len(delimit_bottom) != 0:
+            order = 'asc'
+            limit = int(delimit_bottom[0].split('=')[1])
+                  
+        statement = '''
+            SELECT SpecificBeanBarName, Company, c.EnglishName, Rating, CocoaPercent, c1.EnglishName
+            FROM Bars AS b
+                JOIN Countries AS c
+                ON b.CompanyLocationId = c.Id
+                JOIN Countries AS c1
+                ON b.BroadBeanOriginId = c1.Id
+            WHERE c.Alpha2 LIKE ? AND c1.Alpha2 LIKE ? AND c.Region LIKE ? AND c1.Region LIKE ?
+        '''
+        statement += "ORDER BY {} {} ".format(column, order)
+        statement += "LIMIT ?"
+        cur.execute(statement,(company_country, bean_country, company_region, bean_region, limit))
+        return cur.fetchall()
+    elif command_split[0].lower() == 'companies':
+        pass
+    elif command_split[0].lower() == 'countries':
+        pass
+    elif command_split[0].lower() == 'regions':
+        pass
+    else:
+        return []
+        pass
 
 
 def load_help_text():
@@ -94,9 +214,16 @@ def interactive_prompt():
         if response == 'help':
             print(help_text)
             continue
+        else:
+            process_command(response)
 
 # Make sure nothing runs or prints out when this file is run as a module
 if __name__=="__main__":
-    create_database()
-    load_data()
-    interactive_prompt()
+    if INPUT == 'init':
+        create_database()
+        print('Created database tables')
+    elif INPUT == 'load':
+        load_data()
+        print('Loaded json and csv files')
+    else:
+        interactive_prompt()
