@@ -254,19 +254,6 @@ def process_command(command):
         cur.execute(statement, (country, region, limit))
         return cur.fetchall()
         
-=======
-        statement = '''
-            SELECT Company, c.EnglishName, Count(*)
-            FROM Bars AS b
-                JOIN Countries AS c
-                ON b.CompanyLocationId = c.Id
-            WHERE c.Alpha2 LIKE '%' AND c.Region LIKE '%'
-            GROUP BY Company
-            HAVING Count(*) > 4
-            ORDER BY Count(*) desc
-            LIMIT 10
-        '''
->>>>>>> 316829d3f2f2aa26ce3a63aee14d5c6b2e0cc08f
     elif command_split[0].lower() == 'countries':
         region = fnmatch.filter(command_split, 'region*')
         if len(region) != 0:
