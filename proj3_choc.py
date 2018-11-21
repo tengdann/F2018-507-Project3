@@ -25,9 +25,23 @@ def create_database():
     conn = sqlite3.connect(DBNAME)
     cur = conn.cursor()
     
-    # Create tables, and I don't even need to drop shit
+    # Drop tables in case of bad data
     statement = '''
-        CREATE TABLE IF NOT EXISTS Bars(
+        DROP TABLE IF EXISTS Bars
+    '''
+    cur.execute(statement)
+    
+    statement = '''
+        DROP TABLE IF EXISTS Countries
+    '''
+    cur.execute(statement)
+    
+    conn.commit()
+    print('Old tables successfully deleted')
+    
+    # Create tables
+    statement = '''
+        CREATE TABLE Bars(
             'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
             'Company' TEXT,
             'SpecificBeanBarName' TEXT,
@@ -43,7 +57,7 @@ def create_database():
     cur.execute(statement)
     
     statement = '''
-        CREATE TABLE IF NOT EXISTS Countries (
+        CREATE TABLE Countries (
             'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
             'Alpha2' TEXT,
             'Alpha3' TEXT,
@@ -58,6 +72,7 @@ def create_database():
     
     # Commit changes and close
     conn.commit()
+    print('New tables successfully created')
     conn.close()
     
 def load_data():
@@ -68,18 +83,20 @@ def load_data():
         content = f.read()
         countries = json.loads(content)
         
+        statement = '''
+            INSERT OR IGNORE INTO Countries (Alpha2, Alpha3, EnglishName, Region, Subregion, Population, Area) VALUES (?, ?, ?, ?, ?, ?, ?)
+        '''
+        cur.execute(statement, ('UN', 'UNK', 'Unknown', 'Unknown', 'Unknown', 0, 0))
+        
         for country in countries:
             inputs = (country['alpha2Code'], country['alpha3Code'], country['name'], country['region'], country['subregion'], country['population'], country['area'])
-            statement = '''
-                INSERT OR IGNORE INTO Countries (Alpha2, Alpha3, EnglishName, Region, Subregion, Population, Area) VALUES (?, ?, ?, ?, ?, ?, ?)
-            '''
             cur.execute(statement, inputs)
             
         f.close()
             
     conn.commit()
     
-    with open(BARSCSV) as f:
+    with open(BARSCSV, encoding = 'utf-8') as f:
         csv_reader = csv.reader(f)
         line = 0
         for row in csv_reader:
@@ -166,10 +183,9 @@ def process_command(command):
         
         delimit_top = fnmatch.filter(command_split, 'top*')
         order = 'desc'
+        limit = 10
         if len(delimit_top) != 0:
             limit = int(delimit_top[0].split('=')[1])
-        else:
-            limit = 10
             
         delimit_bottom = fnmatch.filter(command_split, 'bottom*')
         if len(delimit_bottom) != 0:
@@ -184,20 +200,146 @@ def process_command(command):
                 JOIN Countries AS c1
                 ON b.BroadBeanOriginId = c1.Id
             WHERE c.Alpha2 LIKE ? AND c1.Alpha2 LIKE ? AND c.Region LIKE ? AND c1.Region LIKE ?
-        '''
-        statement += "ORDER BY {} {} ".format(column, order)
-        statement += "LIMIT ?"
+            ORDER BY {} {}
+            LIMIT ?
+        '''.format(column, order)
+        
         cur.execute(statement,(company_country, bean_country, company_region, bean_region, limit))
         return cur.fetchall()
+        
     elif command_split[0].lower() == 'companies':
-        pass
+        country = fnmatch.filter(command_split, 'country*')
+        if len(country) != 0:
+            country = country[0].split('=')[1]
+        else:
+            country = '%'
+            
+        region = fnmatch.filter(command_split, 'region*')
+        if len(region) != 0:
+            region = region[0].split('=')[1]
+        else:
+            region = '%'
+            
+        delimit_top = fnmatch.filter(command_split, 'top*')
+        order = 'desc'
+        limit = 10
+        if len(delimit_top) != 0:
+            limit = int(delimit_top[0].split('=')[1])
+            
+        delimit_bottom = fnmatch.filter(command_split, 'bottom*')
+        if len(delimit_bottom) != 0:
+            order = 'asc'
+            limit = int(delimit_bottom[0].split('=')[1])
+            
+        if 'cocoa' in command_split:
+            agg = 'AVG(CocoaPercent)'
+        elif 'bars_sold' in command_split:
+            agg = 'Count(*)'
+        else:
+            agg = 'AVG(Rating)'
+        
+        statement = '''
+            SELECT Company, c.EnglishName, {}
+            FROM Bars AS b
+                JOIN Countries AS c
+                ON b.CompanyLocationId = c.Id
+            WHERE c.Alpha2 LIKE ? AND c.Region LIKE ?
+            GROUP BY Company
+            HAVING Count(*) > 4
+            ORDER BY {} {}
+            LIMIT ?
+        '''.format(agg, agg, order)
+        
+        cur.execute(statement, (country, region, limit))
+        return cur.fetchall()
+        
     elif command_split[0].lower() == 'countries':
-        pass
+        region = fnmatch.filter(command_split, 'region*')
+        if len(region) != 0:
+            region = region[0].split('=')[1]
+        else:
+            region = '%'
+            
+        if 'sources' in command_split:
+            group = 'BroadBeanOriginId'
+        else:
+            group = 'CompanyLocationId'
+            
+        delimit_top = fnmatch.filter(command_split, 'top*')
+        order = 'desc'
+        limit = 10
+        if len(delimit_top) != 0:
+            limit = int(delimit_top[0].split('=')[1])
+            
+        delimit_bottom = fnmatch.filter(command_split, 'bottom*')
+        if len(delimit_bottom) != 0:
+            order = 'asc'
+            limit = int(delimit_bottom[0].split('=')[1])
+            
+        if 'cocoa' in command_split:
+            agg = 'AVG(CocoaPercent)'
+        elif 'bars_sold' in command_split:
+            agg = 'Count(*)'
+        else:
+            agg = 'AVG(Rating)'
+        
+        statement = '''
+            SELECT c.EnglishName, c.Region, {}
+            FROM Bars AS b
+                JOIN Countries AS c
+                ON b.{} = c.Id
+            WHERE c.Region LIKE ?
+            GROUP BY {}
+            HAVING Count(*) > 4
+            ORDER BY {} {}
+            Limit ?
+        '''.format(agg, group, group, agg, order)
+        
+        cur.execute(statement, (region, limit))
+        return cur.fetchall()
+        
     elif command_split[0].lower() == 'regions':
-        pass
+        if 'sources' in command_split:
+            group = 'BroadBeanOriginId'
+        else:
+            group = 'CompanyLocationId'
+            
+        delimit_top = fnmatch.filter(command_split, 'top*')
+        order = 'desc'
+        limit = 10
+        if len(delimit_top) != 0:
+            limit = int(delimit_top[0].split('=')[1])
+            
+        delimit_bottom = fnmatch.filter(command_split, 'bottom*')
+        if len(delimit_bottom) != 0:
+            order = 'asc'
+            limit = int(delimit_bottom[0].split('=')[1])
+            
+        if 'cocoa' in command_split:
+            agg = 'AVG(CocoaPercent)'
+        elif 'bars_sold' in command_split:
+            agg = 'Count(*)'
+        else:
+            agg = 'AVG(Rating)'
+        
+        statement = '''
+            SELECT c.Region, {}
+            FROM Bars AS b
+                JOIN Countries AS c
+                ON b.{} = c.Id
+            WHERE c.Region != 'Unknown'
+            GROUP BY c.Region
+            HAVING Count(*) > 4
+            ORDER BY {} {}
+            Limit ?
+        '''.format(agg, group, agg, order)
+        
+        cur.execute(statement, (limit,))
+        return cur.fetchall()
+        
     else:
+        print('Invalid command!')
         return []
-        pass
 
 
 def load_help_text():
@@ -221,7 +363,7 @@ def interactive_prompt():
 if __name__=="__main__":
     if INPUT == 'init':
         create_database()
-        print('Created database tables')
+        print('Dropped and created new database tables')
     elif INPUT == 'load':
         load_data()
         print('Loaded json and csv files')
