@@ -382,7 +382,7 @@ def interactive_prompt():
                         
                     rating = str(result[3])
                         
-                    cocoaPercent = str(result[4])[:2] + '%'   
+                    cocoaPercent = str(result[4])[:-2] + '%'   
                         
                     if len(result[5]) > 12:
                         beanOrigin = result[5][:12] + '...'
@@ -402,14 +402,16 @@ def interactive_prompt():
                         second = result[1][:12] + '...'
                     else:
                         second = result[1]
-                        
-                    if type(result[2]) is float:
+                    
+                    if type(result[2]) == type(1.0):
                         if result[2] > 5.0:
                             third = str(result[2])[:2] + '%'
+                        else:
+                            third = str(result[2])[:3]
                     else:
                         third = str(result[2])
                         
-                    string = '{:<15}{:<15}{:<5}'.format(first, second, third)
+                    string = '{:<15} {:<15} {:<5}'.format(first, second, third)
                     print(string)
             else:
                 for result in output:
@@ -426,7 +428,7 @@ def interactive_prompt():
                     else:
                         agg = str(result[1])
                     
-                    string = '{:<15}{:<5}'.format(region, agg)
+                    string = '{:<15} {:<5}'.format(region, agg)
                     print(string)
             
         response = input('\nEnter a command: ')
