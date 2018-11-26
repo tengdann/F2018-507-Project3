@@ -150,6 +150,14 @@ def process_command(command):
     cur = conn.cursor()
     
     command_split = command.split(' ')
+    allowed_words = ['bars', 'sellcountry', 'sourcecountry', 'sellregion', 'sourceregion', 'ratings', 'cocoa', 'top', 'bottom', 'companies', 'country', 'region', 'bars_sold', 'countries', 'sellers', 'sources', 'regions']
+    
+    for command_word in command_split:
+        if command_word.split('=')[0] not in allowed_words:
+            print('Command not recognized:', command)
+            return []
+        else:
+            continue
     
     if command_split[0].lower() == 'bars':        
         company_country = fnmatch.filter(command_split, 'sellcountry*')
@@ -208,7 +216,6 @@ def process_command(command):
         return cur.fetchall()
         
     elif command_split[0].lower() == 'companies':
-<<<<<<< HEAD
         country = fnmatch.filter(command_split, 'country*')
         if len(country) != 0:
             country = country[0].split('=')[1]
@@ -337,11 +344,6 @@ def process_command(command):
         
         cur.execute(statement, (limit,))
         return cur.fetchall()
-        
-    else:
-        print('Invalid command!')
-        return []
-
 
 def load_help_text():
     with open('help.txt') as f:
@@ -350,15 +352,86 @@ def load_help_text():
 # Part 3: Implement interactive prompt. We've started for you!
 def interactive_prompt():
     help_text = load_help_text()
-    response = ''
+    response = input('Enter a command: ')
     while response != 'exit':
-        response = input('Enter a command: ')
-
         if response == 'help':
             print(help_text)
             continue
+        elif response == 'exit':
+            pass          
         else:
-            process_command(response)
+            output = process_command(response)
+            if len(output) == 0:
+                pass
+            elif len(output[0]) == 6:
+                for result in output:
+                    if len(result[0]) > 12:
+                        beanName = result[0][:12] + '...'
+                    else:
+                        beanName = result[0]
+                        
+                    if len(result[1]) > 12:
+                        companyName = result[1][:12] + '...'
+                    else:
+                        companyName = result[1]
+                        
+                    if len(result[2]) > 12:
+                        companyLocation = result[2][:12] + '...'
+                    else:
+                        companyLocation = result[2]
+                        
+                    rating = str(result[3])
+                        
+                    cocoaPercent = str(result[4])[:2] + '%'   
+                        
+                    if len(result[5]) > 12:
+                        beanOrigin = result[5][:12] + '...'
+                    else:
+                        beanOrigin = result[5]
+                        
+                    string = '{:<15} {:<15} {:<15} {:<5} {:<5} {:<15}'.format(beanName, companyName, companyLocation, rating, cocoaPercent, beanOrigin)
+                    print(string)
+            elif len(output[0]) == 3:
+                for result in output:
+                    if len(result[0]) > 12:
+                        first = result[0][:12] + '...'
+                    else:
+                        first = result[0]
+                        
+                    if len(result[1]) > 12:
+                        second = result[1][:12] + '...'
+                    else:
+                        second = result[1]
+                        
+                    if type(result[2]) is float:
+                        if result[2] > 5.0:
+                            third = str(result[2])[:2] + '%'
+                    else:
+                        third = str(result[2])
+                        
+                    string = '{:<15}{:<15}{:<5}'.format(first, second, third)
+                    print(string)
+            else:
+                for result in output:
+                    if len(result[0]) > 12:
+                        region = result[0][:12] + '...'
+                    else:
+                        region = result[0]
+                    
+                    if type(result[1]) == type(1.0):
+                        if result[1] > 5.0:
+                            agg = str(result[1])[:2] + '%'
+                        else:
+                            agg = str(result[1])[:3]
+                    else:
+                        agg = str(result[1])
+                    
+                    string = '{:<15}{:<5}'.format(region, agg)
+                    print(string)
+            
+        response = input('\nEnter a command: ')
+        
+    print('Thank you, have a nice day!')
 
 # Make sure nothing runs or prints out when this file is run as a module
 if __name__=="__main__":
