@@ -382,7 +382,7 @@ def interactive_prompt():
                         
                     rating = str(result[3])
                         
-                    cocoaPercent = str(result[4])[:-2] + '%'   
+                    cocoaPercent = str(round(result[4])) + '%'   
                         
                     if len(result[5]) > 12:
                         beanOrigin = result[5][:12] + '...'
@@ -405,9 +405,9 @@ def interactive_prompt():
                     
                     if type(result[2]) == type(1.0):
                         if result[2] > 5.0:
-                            third = str(result[2])[:2] + '%'
+                            third = str(round(result[2])) + '%'
                         else:
-                            third = str(result[2])[:3]
+                            third = str(round(result[2],1))
                     else:
                         third = str(result[2])
                         
@@ -422,9 +422,9 @@ def interactive_prompt():
                     
                     if type(result[1]) == type(1.0):
                         if result[1] > 5.0:
-                            agg = str(result[1])[:2] + '%'
+                            agg = str(round(result[1])) + '%'
                         else:
-                            agg = str(result[1])[:3]
+                            agg = str(round(result[1],1))
                     else:
                         agg = str(result[1])
                     
